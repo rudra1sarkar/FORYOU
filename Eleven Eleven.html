@@ -1,0 +1,334 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Eleven Eleven</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,200;0,9..144,300;1,9..144,300&family=DM+Mono:wght@300;400&display=swap">
+<style>
+/* Layout: one full-screen night sky. Thousands of particles gather into a beating heart at centre with 11:11 inside it; a slow sequence of lines sits beneath. The heart reacts to touch. */
+:root {
+  --bg: #0b0612;
+  --rose: #ff4d79;
+  --blush: #ffc2d1;
+  --gold: #ffdca8;
+  --mist: #b9a3c9;
+  --display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--blush);
+  overflow: hidden;
+  position: relative;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  font-family: var(--display);
+  touch-action: none;
+}
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.stage { position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.top {
+  margin-top: 18px;
+  font-family: var(--mono); font-weight: 300; font-size: 12px;
+  letter-spacing: 0.42em; text-transform: uppercase; color: var(--mist);
+  opacity: 0; animation: fade 1.6s 0.4s forwards ease-out;
+}
+.clockwrap {
+  position: absolute; left: 0; right: 0; top: 40%;
+  transform: translateY(-50%);
+  display: flex; justify-content: center;
+}
+.clock {
+  opacity: 0; animation: fade 2.4s 2.2s forwards ease-out;
+  font-weight: 200; line-height: 1;
+  font-size: clamp(54px, 15vmin, 150px);
+  color: #fff4f7;
+  text-shadow: 0 0 18px rgba(255,77,121,0.85), 0 0 60px rgba(255,77,121,0.55);
+  font-variant-numeric: tabular-nums;
+}
+.digits { display: inline-flex; align-items: center; gap: 0.06em; will-change: transform; }
+.colon { display: inline-block; transform: translateY(-0.06em); animation: blink 1.1s infinite; }
+.bottom {
+  margin-top: auto;
+  padding-block: 0 max(30px, env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; align-items: center; gap: 26px;
+  width: 100%; max-width: 560px; text-align: center;
+}
+#msg {
+  min-height: 3.2em; margin: 0;
+  font-style: italic; font-weight: 300;
+  font-size: clamp(21px, 4.8vmin, 32px); line-height: 1.35;
+  text-wrap: balance; color: var(--blush);
+  text-shadow: 0 0 24px rgba(255,77,121,0.35);
+  transition: opacity 1s ease;
+  opacity: 0;
+}
+#msg.on { opacity: 1; }
+.hint {
+  font-family: var(--mono); font-weight: 300; font-size: 11px;
+  letter-spacing: 0.28em; text-transform: uppercase; color: var(--mist);
+  opacity: 0; animation: hint 3s 5s forwards ease-out;
+}
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes hint { from { opacity: 0 } to { opacity: 0.75 } }
+@keyframes blink { 0%, 55% { opacity: 1 } 70%, 100% { opacity: 0.25 } }
+@media (prefers-reduced-motion: reduce) {
+  .top, .clock, .hint { animation: none; opacity: 1; }
+  .hint { opacity: 0.75; }
+  .colon { animation: none; }
+  #msg { transition: none; }
+}
+</style>
+
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="stage">
+  <div class="top">11 · 11</div>
+  <div class="clockwrap">
+    <div class="clock" role="img" aria-label="Eleven eleven"><span class="digits" id="digits"><span>11</span><span class="colon">:</span><span>11</span></span></div>
+  </div>
+  <div class="bottom">
+    <p id="msg" aria-live="polite"></p>
+    <div class="hint">Touch the heart</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var cv = document.getElementById('sky');
+  var ctx = cv.getContext('2d');
+  var msg = document.getElementById('msg');
+  var digits = document.getElementById('digits');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var W = 0, H = 0, dpr = 1, S = 1, CX = 0, CY = 0;
+  var TAU = Math.PI * 2;
+
+  function heartPt(t) {
+    return [
+      16 * Math.pow(Math.sin(t), 3),
+      -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))
+    ];
+  }
+  var outline = [];
+  for (var i = 0; i < 64; i++) { var hp = heartPt(i / 64 * TAU); outline.push([hp[0] / 17, hp[1] / 17]); }
+
+  function heartPath(x, y, s, rot) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0); ctx.beginPath();
+    for (var i = 0; i < outline.length; i++) {
+      var q = outline[i];
+      if (i === 0) ctx.moveTo(q[0] * s, q[1] * s); else ctx.lineTo(q[0] * s, q[1] * s);
+    }
+    ctx.closePath();
+  }
+  function fillHeart(x, y, s, rot) { heartPath(x, y, s, rot); ctx.fill(); ctx.restore(); }
+  function strokeHeart(x, y, s) { heartPath(x, y, s, 0); ctx.stroke(); ctx.restore(); }
+
+  var stars = [];
+  function seedStars() {
+    stars = [];
+    var n = Math.round(W * H / 8000);
+    for (var i = 0; i < n; i++) stars.push({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.2 + 0.2, ph: Math.random() * TAU, sp: 0.6 + Math.random() * 1.6 });
+  }
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    S = Math.min(W * 0.78 / 34, H * 0.5 / 30);
+    CX = W / 2; CY = H * 0.4;
+    seedStars();
+  }
+
+  var COUNT = reduce ? 1500 : 2800;
+  var parts = [];
+  for (var i = 0; i < COUNT; i++) {
+    var t = Math.random() * TAU;
+    var edge = i % 10 < 4;
+    var r = edge ? 0.92 + Math.random() * 0.08 : Math.sqrt(Math.random());
+    var h = heartPt(t);
+    var a = Math.random() * TAU, d = 0.6 + Math.random() * 0.9;
+    parts.push({
+      tx: h[0] * r, ty: h[1] * r,
+      sx: Math.cos(a) * d, sy: Math.sin(a) * d,
+      ox: 0, oy: 0, vx: 0, vy: 0,
+      delay: Math.random() * 1.4,
+      size: Math.random() * 1.5 + 0.5,
+      ph: Math.random() * TAU,
+      hue: 336 + Math.random() * 26,
+      edge: edge
+    });
+  }
+
+  var floaters = [];
+  var cols = ['255,77,121', '255,194,209', '255,220,168', '255,120,160'];
+  function spawnRise() {
+    floaters.push({
+      x: Math.random() * W, y: H + 20,
+      vx: 0, vy: -(24 + Math.random() * 40),
+      s: 5 + Math.random() * 11, rot: (Math.random() - 0.5) * 0.5, vr: 0,
+      life: 0, max: (H + 60) / 30 + 4, sway: 8 + Math.random() * 18, ph: Math.random() * TAU,
+      c: cols[(Math.random() * cols.length) | 0], a: 0.25 + Math.random() * 0.35, rise: true
+    });
+  }
+  function burst(x, y, n) {
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * TAU, sp = 60 + Math.random() * 200;
+      floaters.push({
+        x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+        s: 5 + Math.random() * 12, rot: Math.random() * TAU, vr: (Math.random() - 0.5) * 3,
+        life: 0, max: 1.8 + Math.random() * 1.6, sway: 0, ph: 0,
+        c: cols[(Math.random() * cols.length) | 0], a: 0.9, rise: false
+      });
+    }
+  }
+
+  var shooters = [], nextShoot = 4;
+  function spawnShooter() {
+    var x = W * (0.45 + Math.random() * 0.55), y = Math.random() * H * 0.35;
+    var sp = 520 + Math.random() * 260;
+    shooters.push({ x: x, y: y, vx: -sp, vy: sp * 0.5, life: 0, max: 0.9 });
+  }
+
+  var ripples = [], lastBeat = -1;
+
+  var ptr = null;
+  function setPtr(e) { ptr = { x: e.clientX, y: e.clientY }; }
+  window.addEventListener('pointermove', setPtr);
+  window.addEventListener('pointerdown', function (e) { setPtr(e); burst(e.clientX, e.clientY, 14); });
+  window.addEventListener('pointerup', function (e) { if (e.pointerType !== 'mouse') ptr = null; });
+  window.addEventListener('pointercancel', function () { ptr = null; });
+  document.addEventListener('pointerleave', function () { ptr = null; });
+
+  var lines = [
+    'It’s 11:11.',
+    'Two ones, side by side.',
+    'Like us.',
+    'Wherever you are right now, you’re in my thoughts.',
+    'You make ordinary minutes feel like this one.',
+    'Thank you for being you.'
+  ];
+  var li = 0;
+  function show() {
+    msg.classList.remove('on');
+    setTimeout(function () {
+      msg.textContent = lines[li];
+      msg.classList.add('on');
+      li = (li + 1) % lines.length;
+    }, reduce ? 0 : 900);
+    setTimeout(show, 6200);
+  }
+  setTimeout(show, 2800);
+
+  var start = performance.now(), last = start, spawnAcc = 0;
+  function ease(k) { return 1 - Math.pow(1 - k, 3); }
+
+  function frame(now) {
+    var e = (now - start) / 1000;
+    var dt = Math.min((now - last) / 1000, 0.05); last = now;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, W, H);
+
+    var g = ctx.createRadialGradient(CX, CY, 0, CX, CY, Math.max(W, H) * 0.8);
+    g.addColorStop(0, '#2c1032'); g.addColorStop(0.5, '#160a20'); g.addColorStop(1, '#0b0612');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (var i = 0; i < stars.length; i++) {
+      var st = stars[i];
+      ctx.globalAlpha = 0.2 + 0.45 * (0.5 + 0.5 * Math.sin(e * st.sp + st.ph));
+      ctx.fillStyle = '#e9dcf5';
+      ctx.fillRect(st.x, st.y, st.r, st.r);
+    }
+    ctx.globalAlpha = 1;
+
+    // heartbeat: lub-dub every 1.1s
+    var m = e % 1.1;
+    var pulse = reduce ? 0 : Math.exp(-Math.pow((m - 0.08) * 13, 2)) + 0.65 * Math.exp(-Math.pow((m - 0.3) * 13, 2));
+    var beat = 1 + 0.06 * pulse;
+    digits.style.transform = 'scale(' + (1 + 0.035 * pulse).toFixed(4) + ')';
+
+    var form = Math.min(1, Math.max(0, (e - 0.8) / 2.6));
+    var bi = Math.floor(e / 1.1);
+    if (!reduce && bi !== lastBeat) { lastBeat = bi; if (e > 2.4) ripples.push({ t: 0 }); }
+
+    var ga = (0.2 + 0.22 * pulse) * form;
+    var gr = S * 22 * (1 + 0.05 * pulse);
+    var g2 = ctx.createRadialGradient(CX, CY, 0, CX, CY, gr);
+    g2.addColorStop(0, 'rgba(255,77,121,' + ga + ')');
+    g2.addColorStop(1, 'rgba(255,77,121,0)');
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
+
+    ctx.globalCompositeOperation = 'lighter';
+
+    // ripples that leave the heart on each beat
+    for (var i = ripples.length - 1; i >= 0; i--) {
+      var rp = ripples[i]; rp.t += dt;
+      if (rp.t > 1.8) { ripples.splice(i, 1); continue; }
+      var k = rp.t / 1.8;
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = 'rgba(255,120,160,' + (0.38 * (1 - k) * (1 - k)) + ')';
+      strokeHeart(CX, CY, S * 17 * (1.05 + k * 0.9), 0);
+    }
+
+    // particles, with a spring that lets the heart be pushed by touch
+    var big = Math.max(W, H);
+    var R = S * 5.5;
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      var k = reduce ? 1 : Math.min(1, Math.max(0, (e - p.delay) / 2.6));
+      var q = ease(k);
+      var wob = reduce ? 0 : Math.sin(e * 1.4 + p.ph) * 0.18;
+      var bx = CX + (p.sx * big * 0.6) * (1 - q) + (p.tx + wob * 0.4) * S * beat * q;
+      var by = CY + (p.sy * big * 0.6) * (1 - q) + (p.ty + wob * 0.4) * S * beat * q;
+      if (ptr && q > 0.9) {
+        var dx = bx + p.ox - ptr.x, dy = by + p.oy - ptr.y;
+        var d = Math.sqrt(dx * dx + dy * dy) + 0.001;
+        if (d < R) { var f = 1 - d / R; p.vx += dx / d * f * f * 1400 * dt; p.vy += dy / d * f * f * 1400 * dt; }
+      }
+      p.vx += (-p.ox * 26 - p.vx * 5) * dt; p.vy += (-p.oy * 26 - p.vy * 5) * dt;
+      p.ox += p.vx * dt; p.oy += p.vy * dt;
+      var x = bx + p.ox, y = by + p.oy;
+      var disp = Math.min(1, (Math.abs(p.ox) + Math.abs(p.oy)) / (S * 2));
+      var tw = 0.55 + 0.45 * Math.sin(e * 2 + p.ph * 3);
+      var al = (p.edge ? 0.85 : 0.5) * tw * (0.35 + 0.65 * q) + 0.35 * disp;
+      ctx.fillStyle = 'hsla(' + p.hue + ',100%,' + (p.edge ? 72 : 62) + '%,' + Math.min(1, al) + ')';
+      var sz = p.size * (1 + 0.3 * pulse + 0.6 * disp) * (S > 14 ? 1.1 : 0.9);
+      ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+    }
+
+    // floating hearts and bursts
+    spawnAcc += dt;
+    if (!reduce && e > 1 && spawnAcc > 0.3) { spawnAcc = 0; spawnRise(); }
+    for (var i = floaters.length - 1; i >= 0; i--) {
+      var f2 = floaters[i];
+      f2.life += dt;
+      if (f2.life > f2.max || f2.y < -30) { floaters.splice(i, 1); continue; }
+      if (f2.rise) { f2.y += f2.vy * dt; f2.x += Math.cos(f2.life * 0.9 + f2.ph) * f2.sway * dt; }
+      else { f2.x += f2.vx * dt; f2.y += f2.vy * dt; f2.vx *= 0.985; f2.vy = f2.vy * 0.985 + 18 * dt; f2.rot += f2.vr * dt; }
+      var fade = f2.rise ? Math.min(1, f2.life / 1.5) : 1 - f2.life / f2.max;
+      ctx.fillStyle = 'rgba(' + f2.c + ',' + (f2.a * Math.max(0, fade)) + ')';
+      fillHeart(f2.x, f2.y, f2.s, f2.rot);
+    }
+
+    // shooting stars
+    if (!reduce && e > nextShoot) { spawnShooter(); nextShoot = e + 5 + Math.random() * 6; }
+    for (var i = shooters.length - 1; i >= 0; i--) {
+      var s2 = shooters[i]; s2.life += dt; s2.x += s2.vx * dt; s2.y += s2.vy * dt;
+      if (s2.life > s2.max) { shooters.splice(i, 1); continue; }
+      var a2 = 1 - s2.life / s2.max;
+      var tx = s2.x - s2.vx * 0.14, ty = s2.y - s2.vy * 0.14;
+      var lg = ctx.createLinearGradient(s2.x, s2.y, tx, ty);
+      lg.addColorStop(0, 'rgba(255,240,245,' + a2 + ')'); lg.addColorStop(1, 'rgba(255,240,245,0)');
+      ctx.strokeStyle = lg; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(s2.x, s2.y); ctx.lineTo(tx, ty); ctx.stroke();
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
